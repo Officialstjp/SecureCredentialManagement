@@ -13,10 +13,23 @@ var filterArg = new Argument<string?>("filter")
     Arity = ArgumentArity.ZeroOrOne, 
     Description = "Wildcard filter pattern (e.g., 'git:*', 'MyApp:*')" 
 };
+var wideOpt = new Option<bool>("--wide", "-w")
+{
+    Description = "Show full target names and usernames without truncation"
+};
+var columnsOpt = new Option<int>("--columns", "-c")
+{
+    Description = "Target column width in table mode (default: 50)",
+    DefaultValueFactory = _ => 50
+};
 listCommand.Add(filterArg);
+listCommand.Add(wideOpt);
+listCommand.Add(columnsOpt);
 listCommand.SetAction(parseResult =>
 {
     var filter = parseResult.GetValue(filterArg);
+    var wide = parseResult.GetValue(wideOpt);
+    var targetWidth = Math.Clamp(parseResult.GetValue(columnsOpt), 20, 200);
     var creds = CredentialManager.EnumerateCredentials(filter);
     if (creds.Count == 0)
     {
@@ -26,10 +39,28 @@ listCommand.SetAction(parseResult =>
         return 0;
     }
 
-    Console.WriteLine($"{"Target",-40} {"User",-30} {"Type",-10}");
-    Console.WriteLine(new string('─', 82));
-    foreach (var c in creds)
-        Console.WriteLine($"{Truncate(c.TargetName, 40),-40} {Truncate(c.UserName, 30),-30} {c.CredentialType,-10}");
+    if (wide)
+    {
+        // Wide format: one credential per block, full values
+        foreach (var c in creds)
+        {
+            Console.WriteLine($"Target: {c.TargetName}");
+            Console.WriteLine($"User:   {c.UserName}");
+            Console.WriteLine($"Type:   {c.CredentialType}");
+            Console.WriteLine();
+        }
+    }
+    else
+    {
+        // Table format: configurable column widths
+        var userWidth = Math.Max(15, targetWidth / 2);
+        var totalWidth = targetWidth + userWidth + 12;
+        
+        Console.WriteLine($"{"Target".PadRight(targetWidth)} {"User".PadRight(userWidth)} Type");
+        Console.WriteLine(new string('─', totalWidth));
+        foreach (var c in creds)
+            Console.WriteLine($"{Truncate(c.TargetName, targetWidth).PadRight(targetWidth)} {Truncate(c.UserName, userWidth).PadRight(userWidth)} {c.CredentialType}");
+    }
     
     Console.WriteLine($"\n{creds.Count} credential(s) found.");
     return 0;
