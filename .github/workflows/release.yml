@@ -43,16 +43,11 @@ jobs:
       - name: Run Tests
         run: dotnet test --configuration Release --no-build --verbosity normal
 
-      - name: Create release artifacts
-        run: |
-          # Create a clean release folder
-          New-Item -ItemType Directory -Force -Path release
-          
-          # Copy CLI tool
-          Copy-Item -Path "build/*" -Destination "release/" -Recurse
-          
-          # Create ZIP for release
-          Compress-Archive -Path "release/*" -DestinationPath "wcred-${{ inputs.version }}-win-x64.zip"
+      - name: Publish CLI
+        run: dotnet publish src/SecureCredentialManagement.Cli --configuration Release --no-build -o release/
+
+      - name: Create ZIP for release
+        run: Compress-Archive -Path "release/*" -DestinationPath "wcred-${{ inputs.version }}-win-x64.zip"
         shell: pwsh
 
       - name: Upload build artifact

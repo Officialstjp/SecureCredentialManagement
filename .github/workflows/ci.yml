@@ -24,14 +24,17 @@ jobs:
         run: dotnet restore
 
       - name: Build
-        run: dotnet build --configuration Release --no-restore -o build/
+        run: dotnet build --configuration Release --no-restore
 
       - name: Test
         run: dotnet test --configuration Release --no-build --verbosity normal
 
+      - name: Publish CLI
+        run: dotnet publish src/SecureCredentialManagement.Cli --configuration Release --no-build -o publish/
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-artifacts
-          path: build/
+          name: wcred
+          path: publish/
           retention-days: 7
