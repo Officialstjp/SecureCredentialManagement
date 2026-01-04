@@ -1,0 +1,76 @@
+# Release Pipeline - Manual trigger with version input
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+    
+    # Optional: Require manual approval before release
+    # To enable: Go to repo Settings > Environments > Create "production" > Add required reviewers
+    # environment: production
+    
+    permissions:
+      contents: write  # Required to create releases
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build Release
+        run: dotnet build --configuration Release --no-restore /p:Version=${{ inputs.version }}
+
+      - name: Run Tests
+        run: dotnet test --configuration Release --no-build --verbosity normal
+
+      - name: Create release artifacts
+        run: |
+          # Create a clean release folder
+          New-Item -ItemType Directory -Force -Path release
+          
+          # Copy CLI tool
+          Copy-Item -Path "build/*" -Destination "release/" -Recurse
+          
+          # Create ZIP for release
+          Compress-Archive -Path "release/*" -DestinationPath "wcred-${{ inputs.version }}-win-x64.zip"
+        shell: pwsh
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wcred-${{ inputs.version }}
+          path: release/
+          retention-days: 90
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          draft: false
+          prerelease: ${{ inputs.prerelease }}
+          generate_release_notes: true
+          files: |
+            wcred-${{ inputs.version }}-win-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
