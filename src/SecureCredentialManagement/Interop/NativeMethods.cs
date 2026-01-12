@@ -23,9 +23,18 @@ internal struct CREDENTIAL
     public nint UserName;
 }
 
+internal struct CREDENTIAL_ATTRIBUTE
+{
+    public nint Keyword;    // LPWSTR - attribute name, pointer to a null-terminated string
+    public uint Flags;      // DWORD - reserved for future use, must be zero
+    public uint ValueSize;  // DWORD - size of the attribute data in bytes
+    public nint Value;      // LPBYTE - pointer to the attribute data
+}
+
 internal static partial class NativeMethods
 {
     public const int ERROR_NOT_FOUND = 1168;
+    public const int ERROR_INVALID_PARAMETER = 87;
 
     [LibraryImport("Advapi32.dll", EntryPoint = "CredReadW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     [return: MarshalAs(UnmanagedType.Bool)]

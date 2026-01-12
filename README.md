@@ -4,6 +4,16 @@ A secure .NET library and CLI tool for managing Windows Credential Manager crede
 
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-blue)](https://dotnet.microsoft.com/)
 
+## What's New in v1.1
+
+- **Fluent Builder API** - Clean, readable credential creation with `CredentialManager.CreateCredential()`
+- **Metadata Support** - Comments, attributes, expiry tracking, and `LastWritten` timestamps
+- **Auto-Detection** - No need to specify credential type when reading or deleting
+- **Better Errors** - `CredentialException` with user-friendly messages instead of raw Win32 codes
+- **Type Validation** - Early validation prevents invalid operations on certificate types
+
+See [CHANGELOG.md](CHANGELOG.md) for full details.
+
 ## Features
 
 - **Secure by default** - Passwords are zeroed from memory after use
@@ -11,6 +21,9 @@ A secure .NET library and CLI tool for managing Windows Credential Manager crede
 - **Full CRUD operations** - Create, read, update, delete credentials
 - **CLI tool included** - Manage credentials from the command line
 - **Native interop** - Direct P/Invoke to Windows Credential Manager APIs
+- **Metadata support** - Comments, attributes, and expiry tracking
+- **Fluent builder API** - Clean, readable credential creation
+- **Multiple credential types** - Generic, DomainPassword, DomainCertificate, and more
 
 ## Installation
 
@@ -44,18 +57,25 @@ The `wcred` command-line tool provides quick access to Windows Credential Manage
 ### List Credentials
 
 ```bash
-# List all credentials
+# List all credentials (table format)
 wcred list
 
 # Filter by pattern (wildcards supported)
 wcred list "git:*"
 wcred list "MyApp:*"
+
+# Wide format: full details including timestamps and comments
+wcred list --wide
+wcred list "MyApp:*" -w
+
+# Adjust column width for long target names
+wcred list --columns 80
 ```
 
 ### Get a Credential
 
 ```bash
-# Show credential (password masked)
+# Show credential (password masked) with all metadata
 wcred get "MyApp:Production"
 
 # Show password in plain text
@@ -63,16 +83,24 @@ wcred get "MyApp:Production" --show-password
 wcred get "MyApp:Production" -s
 ```
 
-> **Note:** Target names are case-sensitive and use forward slashes (`/`), not backslashes.
+**Output includes:** Target, User, Password (masked), Type, Last Updated, Comment (if set), Attributes, and expiry warnings.
+
+> **Note:** Target names are case-sensitive. Use `wcred list` to find exact names.
 
 ### Store a Credential
 
 ```bash
-# Interactive (prompts for password securely)
+# Interactive (prompts for password securely - recommended)
 wcred set "MyApp:Production" "user@example.com"
 
 # With persistence level
 wcred set "MyApp:Token" "api-key" --persist Session
+
+# With a comment/description
+wcred set "MyApp:DB" "sa" --comment "Production database - rotate quarterly"
+
+# Specify credential type (for Windows domain scenarios)
+wcred set "MyApp:Domain" "DOMAIN\\user" --type DomainPassword
 
 # Non-interactive (for scripts - password visible in history!)
 wcred set "MyApp:CI" "service-account" --password "secret123"
@@ -82,6 +110,11 @@ wcred set "MyApp:CI" "service-account" --password "secret123"
 - `Session` - Credential exists only for current login session
 - `LocalMachine` - Persists across reboots on this machine (default)
 - `Enterprise` - Roams with domain profile
+
+**Credential types:**
+- `Generic` - Application credentials (default, most common)
+- `DomainPassword` - Windows domain authentication
+- `DomainCertificate` - Certificate-based auth (smartcards, PIV)
 
 ### Delete a Credential
 
@@ -132,6 +165,57 @@ bool deleted = CredentialManager.DeleteCredential("MyApp:Production");
 // Enumerate credentials
 var allCreds = CredentialManager.EnumerateCredentials();
 var filtered = CredentialManager.EnumerateCredentials("MyApp:*");
+```
+
+### Fluent Builder API (Recommended)
+
+The builder API provides a clean, readable way to create credentials with full control over all options:
+
+```csharp
+// Simple credential
+CredentialManager.CreateCredential("MyApp:Production")
+    .WithUserName("admin@example.com")
+    .WithSecret("MySecurePassword123")
+    .Save();
+
+// Full-featured credential with metadata
+CredentialManager.CreateCredential("MyApp:Database")
+    .WithUserName("sa")
+    .WithSecret(passwordFromSecureSource)
+    .WithPersistence(CredentialPersistence.LocalMachine)
+    .WithType(CredentialType.Generic)
+    .WithComment("Production DB - created by deployment pipeline")
+    .WithExpiry(DateTimeOffset.UtcNow.AddDays(90))
+    .WithMetadata("created_by", "deploy-bot")
+    .WithMetadata("environment", "production")
+    .WithAttribute("team", System.Text.Encoding.UTF8.GetBytes("platform"))
+    .SaveSecure();  // Use SaveSecure() for zeroed intermediate buffers
+```
+
+### Reading Credential Metadata
+
+```csharp
+var credential = CredentialManager.ReadCredential("MyApp:Database");
+if (credential is not null)
+{
+    Console.WriteLine($"Target: {credential.TargetName}");
+    Console.WriteLine($"User: {credential.UserName}");
+    Console.WriteLine($"Type: {credential.CredentialType}");
+    Console.WriteLine($"Last Updated: {credential.LastWritten}");
+    Console.WriteLine($"Comment: {credential.Comment}");
+    
+    // Check expiry
+    if (credential.IsExpired())
+        Console.WriteLine("⚠ This credential has expired!");
+    
+    // Read string attributes
+    var createdBy = credential.GetAttributeAsString("meta:created_by");
+    Console.WriteLine($"Created by: {createdBy}");
+    
+    // Access raw byte attributes
+    foreach (var attr in credential.Attributes)
+        Console.WriteLine($"  {attr.Key}: {System.Text.Encoding.UTF8.GetString(attr.Value)}");
+}
 ```
 
 ### Secure APIs (Recommended)
@@ -376,3 +460,76 @@ if (SecureEncoding.TryEncodeBasicAuth(userName, password, buffer, out int writte
 
 // HMAC-SHA256 with secure key handling (key buffer zeroed after use)
 byte[] hash = SecureEncoding.ComputeHmacSha256(secretKey, dataToSign);
+```
+
+---
+
+## Credential Properties Reference
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `TargetName` | `string` | Unique identifier for the credential |
+| `UserName` | `string?` | Username or key identifier |
+| `Password` | `string?` | The secret value |
+| `CredentialType` | `CredentialType` | Generic, DomainPassword, DomainCertificate, etc. |
+| `Comment` | `string?` | Description or notes |
+| `LastWritten` | `DateTimeOffset` | When the credential was last modified |
+| `Attributes` | `IReadOnlyDictionary<string, byte[]>` | Custom key-value metadata |
+| `TargetAlias` | `string?` | Alternative name for the credential |
+
+### Credential Types
+
+| Type | Value | Writable | Use Case |
+|------|-------|----------|----------|
+| `Generic` | 1 | ✅ | Application credentials (API keys, passwords) |
+| `DomainPassword` | 2 | ✅ | Windows domain authentication |
+| `DomainCertificate` | 3 | ❌ | Certificate-based auth (smartcards) - read-only |
+| `DomainVisiblePassword` | 4 | ✅ | RDP saved credentials |
+| `GenericCertificate` | 5 | ❌ | Application certificates - read-only |
+
+> **Note:** Certificate types require marshaled certificate data and cannot be created with plain username/password through this library. They can be read if created by other applications.
+
+### Helper Methods
+
+| Method | Description |
+|--------|-------------|
+| `credential.GetAttributeAsString(key)` | Get attribute value as UTF-8 string |
+| `credential.IsExpired()` | Check if "expiry" attribute is in the past |
+| `credentialType.IsWritable()` | Check if type can be created with username/password |
+| `credentialType.GetWriteRestrictionReason()` | Get explanation for read-only types |
+| `CredentialBuilder.WithExpiry(date)` | Set expiration date |
+| `CredentialBuilder.WithMetadata(key, value)` | Add `meta:` prefixed attribute |
+
+---
+
+## Error Handling
+
+The library throws `CredentialException` with user-friendly messages for common errors:
+
+```csharp
+try
+{
+    CredentialManager.CreateCredential("MyApp:Token")
+        .WithUserName("user")
+        .WithSecret("secret")
+        .WithType(CredentialType.DomainCertificate)  // Invalid for password-based creds
+        .Save();
+}
+catch (CredentialException ex)
+{
+    Console.WriteLine(ex.Message);
+    // "Cannot write credential: DomainCertificate requires marshaled certificate data..."
+    
+    if (ex.Win32ErrorCode.HasValue)
+        Console.WriteLine($"Win32 Error: {ex.Win32ErrorCode}");
+}
+```
+
+### Common Error Codes
+
+| Code | Constant | Meaning |
+|------|----------|---------|
+| 87 | `ERROR_INVALID_PARAMETER` | Invalid credential type or malformed data |
+| 1168 | `ERROR_NOT_FOUND` | Credential does not exist |
+| 2202 | `ERROR_INVALID_USERNAME` | Username format wrong for credential type |
+| 1312 | `ERROR_NO_SUCH_LOGON_SESSION` | Session-scoped credential from different session |

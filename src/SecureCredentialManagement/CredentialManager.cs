@@ -18,14 +18,61 @@ public static class CredentialManager
 {
     #region Public Methods
 
+    public static CredentialBuilder CreateCredential(string targetName) 
+        => CredentialBuilder.Create(targetName);
+
+    // Credential types that can be read via CredRead without special handling.
+    // DomainCertificate/GenericCertificate may fail with ERROR_INVALID_PARAMETER for some queries.
+    // DomainExtended requires special structures. We handle these by catching errors.
+    private static readonly CredentialType[] ReadableTypes =
+    [
+        CredentialType.Generic,
+        CredentialType.DomainPassword,
+        CredentialType.DomainVisiblePassword,
+        CredentialType.DomainCertificate,
+        CredentialType.GenericCertificate
+    ];
+
     /// <summary>
     /// Reads a credential from Windows Credential Manager.
+    /// When type is null (default), automatically tries all common credential types.
     /// </summary>
-    public static Credential? ReadCredential(string targetName)
+    /// <param name="targetName">The target name of the credential to read.</param>
+    /// <param name="type">Optional credential type. If null, auto-detects by trying all types.</param>
+    /// <returns>The credential if found, null otherwise.</returns>
+    public static Credential? ReadCredential(
+        string targetName,
+        CredentialType? type = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetName);
 
-        if (!NativeMethods.CredRead(targetName, CredentialType.Generic, 0, out nint credPtr))
+        if (type.HasValue)
+        {
+            return ReadCredentialInternal(targetName, type.Value);
+        }
+
+        // Auto-detect: try each type until one succeeds
+        foreach (var credType in ReadableTypes)
+        {
+            try
+            {
+                var credential = ReadCredentialInternal(targetName, credType);
+                if (credential is not null)
+                    return credential;
+            }
+            catch (Win32Exception)
+            {
+                // Type may not be valid for this credential, try next
+                continue;
+            }
+        }
+
+        return null;
+    }
+
+    private static Credential? ReadCredentialInternal(string targetName, CredentialType type)
+    {
+        if (!NativeMethods.CredRead(targetName, type, 0, out nint credPtr))
         {
             int error = Marshal.GetLastWin32Error();
             if (error == NativeMethods.ERROR_NOT_FOUND)
@@ -48,23 +95,45 @@ public static class CredentialManager
             (CredentialType)native.Type,
             Marshal.PtrToStringUni(native.TargetName) ?? string.Empty,
             Marshal.PtrToStringUni(native.UserName),
-            secret);
+            secret,
+            Marshal.PtrToStringUni(native.Comment),
+            Marshal.PtrToStringUni(native.TargetAlias),
+            FileTimeToDateTimeOffset(native.LastWritten),
+            ParseAttributes(native.Attributes, native.AttributeCount));
     }
 
     /// <summary>
-    /// Reads a credential securely via callback. Secret is zeroed after callback completes
+    /// Reads a credential securely via callback. Secret is zeroed after callback completes.
+    /// When type is null (default), automatically tries all common credential types.
     /// </summary>
     public static bool TryReadCredentialSecure(
         string targetName,
         out string? userName,
         ReadOnlySpanAction<char, object?> secretHandler,
-        object? state = null)
+        object? state = null,
+        CredentialType? type = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetName);
         userName = null;
 
-        if (!NativeMethods.CredRead(targetName, CredentialType.Generic, 0, out nint credPtr))
-            return false;
+        nint credPtr;
+        if (type.HasValue)
+        {
+            if (!NativeMethods.CredRead(targetName, type.Value, 0, out credPtr))
+                return false;
+        }
+        else
+        {
+            // Auto-detect: try each type until one succeeds
+            credPtr = IntPtr.Zero;
+            foreach (var credType in ReadableTypes)
+            {
+                if (NativeMethods.CredRead(targetName, credType, 0, out credPtr))
+                    break;
+            }
+            if (credPtr == IntPtr.Zero)
+                return false;
+        }
 
         using var handle = new CriticalCredentialHandle(credPtr);
         var native = handle.GetCredential();
@@ -98,16 +167,34 @@ public static class CredentialManager
 
     /// <summary>
     /// Reads a credential with username and secret in a single callback.
+    /// When type is null (default), automatically tries all common credential types.
     /// </summary>
     public static bool TryUseCredential<TState>(
         string targetName,
         ReadOnlySpanAction<char, (string? userName, TState state)> handler,
-        TState state = default!)
+        TState state = default!,
+        CredentialType? type = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetName);
 
-        if (!NativeMethods.CredRead(targetName, CredentialType.Generic, 0, out nint credPtr))
-            return false;
+        nint credPtr;
+        if (type.HasValue)
+        {
+            if (!NativeMethods.CredRead(targetName, type.Value, 0, out credPtr))
+                return false;
+        }
+        else
+        {
+            // Auto-detect: try each type until one succeeds
+            credPtr = IntPtr.Zero;
+            foreach (var credType in ReadableTypes)
+            {
+                if (NativeMethods.CredRead(targetName, credType, 0, out credPtr))
+                    break;
+            }
+            if (credPtr == IntPtr.Zero)
+                return false;
+        }
 
         using var handle = new CriticalCredentialHandle(credPtr);
         var native = handle.GetCredential();
@@ -146,7 +233,11 @@ public static class CredentialManager
         string targetName,
         string userName,
         string secret,
-        CredentialPersistence persistence = CredentialPersistence.LocalMachine)
+        CredentialPersistence persistence = CredentialPersistence.LocalMachine,
+        CredentialType type = CredentialType.Generic,
+        string? comment = null,
+        string? targetAlias = null,
+        IDictionary<string, byte[]>? attributes = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetName);
         ArgumentNullException.ThrowIfNull(secret);
@@ -156,7 +247,7 @@ public static class CredentialManager
 
         try
         {
-            WriteCredentialCore(targetName, userName, secretBytes, persistence);
+            WriteCredentialCore(targetName, userName, secretBytes, persistence, type, comment, targetAlias, attributes);
         }
         finally
         {
@@ -172,8 +263,15 @@ public static class CredentialManager
         string targetName,
         string userName,
         ReadOnlySpan<char> secret,
-        CredentialPersistence persistence = CredentialPersistence.LocalMachine)
+        CredentialPersistence persistence = CredentialPersistence.LocalMachine,
+        CredentialType type = CredentialType.Generic,
+        string? comment = null,
+        string? targetAlias = null,
+        IDictionary<string, byte[]>? attributes = null)
     {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetName);
+        ArgumentException.ThrowIfNullOrWhiteSpace(userName);
+
         int byteCount = secret.Length * sizeof(char);
         byte[] secretBytes = ArrayPool<byte>.Shared.Rent(byteCount);
         GCHandle pin = GCHandle.Alloc(secretBytes, GCHandleType.Pinned);
@@ -181,7 +279,7 @@ public static class CredentialManager
         try
         {
             MemoryMarshal.AsBytes(secret).CopyTo(secretBytes);
-            WriteCredentialCore(targetName, userName, secretBytes.AsSpan(0, byteCount), persistence);
+            WriteCredentialCore(targetName, userName, secretBytes.AsSpan(0, byteCount), persistence, type, comment, targetAlias, attributes);
         }
         finally
         {
@@ -193,20 +291,36 @@ public static class CredentialManager
 
     /// <summary>
     /// Deletes a credential from Windows Credential Manager.
+    /// When type is null (default), automatically finds and deletes the credential regardless of type.
     /// </summary>
-    public static bool DeleteCredential(string targetName, CredentialType type = CredentialType.Generic)
+    public static bool DeleteCredential(string targetName, CredentialType? type = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(targetName);
 
-        if (!NativeMethods.CredDelete(targetName, type, 0))
+        if (type.HasValue)
         {
-            int error = Marshal.GetLastWin32Error();
-            if (error == NativeMethods.ERROR_NOT_FOUND)
-                return false;
-            throw new Win32Exception(error);
+            if (!NativeMethods.CredDelete(targetName, type.Value, 0))
+            {
+                int error = Marshal.GetLastWin32Error();
+                if (error == NativeMethods.ERROR_NOT_FOUND)
+                    return false;
+                throw new Win32Exception(error);
+            }
+            return true;
         }
 
-        return true;
+        // Auto-detect: try each type until one succeeds
+        foreach (var credType in ReadableTypes)
+        {
+            if (NativeMethods.CredDelete(targetName, credType, 0))
+                return true;
+            
+            int error = Marshal.GetLastWin32Error();
+            if (error != NativeMethods.ERROR_NOT_FOUND && error != NativeMethods.ERROR_INVALID_PARAMETER)
+                throw new Win32Exception(error);
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -240,7 +354,11 @@ public static class CredentialManager
                     (CredentialType)native.Type,
                     Marshal.PtrToStringUni(native.TargetName) ?? string.Empty,
                     Marshal.PtrToStringUni(native.UserName),
-                    secret));
+                    secret,
+                    Marshal.PtrToStringUni(native.Comment),
+                    Marshal.PtrToStringUni(native.TargetAlias),
+                    FileTimeToDateTimeOffset(native.LastWritten),
+                    ParseAttributes(native.Attributes, native.AttributeCount)));
             }
 
             return credentials;
@@ -259,11 +377,27 @@ public static class CredentialManager
         string targetName,
         string userName,
         ReadOnlySpan<byte> secretBytes,
-        CredentialPersistence persistence)
+        CredentialPersistence persistence,
+        CredentialType type,
+        string? comment,
+        string? targetAlias,
+        IDictionary<string, byte[]>? attributes)
     {
+        // Validate credential type before attempting write
+        if (!type.IsWritable())
+        {
+            var reason = type.GetWriteRestrictionReason() ?? "This credential type cannot be created with username/password.";
+            throw new CredentialException($"Cannot write credential: {reason}", CredentialException.ErrorCodes.ERROR_INVALID_PARAMETER, type);
+        }
+
         nint targetNamePtr = Marshal.StringToCoTaskMemUni(targetName);
         nint userNamePtr = Marshal.StringToCoTaskMemUni(userName ?? Environment.UserName);
+        nint commentPtr = comment != null ? Marshal.StringToCoTaskMemUni(comment) : IntPtr.Zero;
+        nint targetAliasPtr = targetAlias != null ? Marshal.StringToCoTaskMemUni(targetAlias) : IntPtr.Zero;
         nint blobPtr = IntPtr.Zero;
+        nint attributesPtr = IntPtr.Zero;
+        var attrHandles = new List<GCHandle>();
+        var keywordPtrs = new List<nint>();
 
         try
         {
@@ -272,29 +406,50 @@ public static class CredentialManager
             {
                 secretBytes.CopyTo(new Span<byte>((void*)blobPtr, secretBytes.Length));
             }
+            
+            uint attrCount = 0;
+            if (attributes is { Count: > 0 })
+            {
+                attrCount = (uint)attributes.Count;
+                attributesPtr = MarshalAttributes(attributes, attrHandles, keywordPtrs);
+            }
 
             var credential = new CREDENTIAL
             {
                 Flags = 0,
-                Type = (uint)CredentialType.Generic,
+                Type = (uint)type,
                 TargetName = targetNamePtr,
                 UserName = userNamePtr,
                 CredentialBlob = blobPtr,
                 CredentialBlobSize = (uint)secretBytes.Length,
                 Persist = (uint)persistence,
-                AttributeCount = 0,
-                Attributes = IntPtr.Zero,
-                Comment = IntPtr.Zero,
-                TargetAlias = IntPtr.Zero,
+                Comment = commentPtr,
+                TargetAlias = targetAliasPtr,
+                AttributeCount = attrCount,
+                Attributes = attributesPtr,
             };
 
             if (!NativeMethods.CredWrite(ref credential, 0))
-                throw new Win32Exception(Marshal.GetLastWin32Error());
+            {
+                var win32Ex = new Win32Exception(Marshal.GetLastWin32Error());
+                throw CredentialException.FromWin32Exception(win32Ex, $"write credential '{targetName}'", type);
+            }
         }
         finally
         {
             Marshal.FreeCoTaskMem(targetNamePtr);
             Marshal.FreeCoTaskMem(userNamePtr);
+            if (commentPtr != IntPtr.Zero)Marshal.FreeCoTaskMem(commentPtr);
+            if (targetAliasPtr != IntPtr.Zero)Marshal.FreeCoTaskMem(targetAliasPtr);
+            
+            foreach (var h in attrHandles)
+                if (h.IsAllocated) h.Free();
+            
+            foreach (var ptr in keywordPtrs)
+                Marshal.FreeCoTaskMem(ptr);
+            
+            if (attributesPtr != IntPtr.Zero)
+                Marshal.FreeCoTaskMem(attributesPtr);
 
             if (blobPtr != IntPtr.Zero)
             {
@@ -302,6 +457,77 @@ public static class CredentialManager
                 Marshal.FreeCoTaskMem(blobPtr);
             }
         }
+    }
+
+    private static DateTimeOffset FileTimeToDateTimeOffset(
+        System.Runtime.InteropServices.ComTypes.FILETIME fileTime)
+    {
+        long ft = ((long)fileTime.dwHighDateTime << 32) | (uint)fileTime.dwLowDateTime;
+        return ft == 0
+            ? DateTimeOffset.MinValue
+            : DateTimeOffset.FromFileTime(ft);
+    }
+
+    private static Dictionary<string, byte[]> ParseAttributes(nint attributesPtr, uint count)
+    {
+        var result = new Dictionary<string, byte[]>((int)count, StringComparer.OrdinalIgnoreCase);
+
+        if (attributesPtr == IntPtr.Zero || count == 0)
+            return result;
+
+        int attrSize = Marshal.SizeOf<CREDENTIAL_ATTRIBUTE>();
+
+        for (int i = 0; i < count; i++)
+        {
+            nint attrPtr = IntPtr.Add(attributesPtr, i * attrSize);
+            var attr = Marshal.PtrToStructure<CREDENTIAL_ATTRIBUTE>(attrPtr);
+
+            string? keyword = Marshal.PtrToStringUni(attr.Keyword);
+            if (keyword is null)
+                continue;
+            
+            byte[] value = new byte[attr.ValueSize];
+            if (attr.Value != IntPtr.Zero && attr.ValueSize > 0)
+            {
+                Marshal.Copy(attr.Value, value, 0, (int)attr.ValueSize);
+            }
+
+            result[keyword] = value;
+        }
+
+        return result;
+    }
+
+    private static nint MarshalAttributes(
+        IDictionary<string, byte[]> attributes,
+        List<GCHandle> handles,
+        List<nint> keywordPtrs)
+    {
+        int attrSize = Marshal.SizeOf<CREDENTIAL_ATTRIBUTE>();
+        nint arrayPtr = Marshal.AllocCoTaskMem(attrSize * attributes.Count);
+    
+        int i = 0;
+        foreach (var kvp in attributes)
+        {
+            var valueHandle = GCHandle.Alloc(kvp.Value, GCHandleType.Pinned);
+            handles.Add(valueHandle);
+            
+            nint keywordPtr = Marshal.StringToCoTaskMemUni(kvp.Key);
+            keywordPtrs.Add(keywordPtr);
+            
+            var attr = new CREDENTIAL_ATTRIBUTE
+            {
+                Keyword = keywordPtr,
+                Flags = 0,
+                ValueSize = (uint)kvp.Value.Length,
+                Value = valueHandle.AddrOfPinnedObject()
+            };
+            
+            Marshal.StructureToPtr(attr, arrayPtr + (i * attrSize), false);
+            i++;
+        }
+        
+        return arrayPtr;
     }
 
     #endregion
