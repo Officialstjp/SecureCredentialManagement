@@ -46,6 +46,16 @@ jobs:
       - name: Publish CLI
         run: dotnet publish src/SecureCredentialManagement.Cli --configuration Release --no-build -o release/
 
+      - name: Pack NuGet packages
+        run: |
+          dotnet pack src/SecureCredentialManagement --configuration Release --no-build -o nupkgs/ /p:Version=${{ inputs.version }}
+          dotnet pack src/SecureCredentialManagement.Cli --configuration Release --no-build -o nupkgs/ /p:Version=${{ inputs.version }}
+
+      - name: Push to NuGet
+        run: |
+          dotnet nuget push nupkgs/Stjp.SecureCredentialManagement.${{ inputs.version }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push nupkgs/wcred.${{ inputs.version }}.nupkg --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
       - name: Create ZIP for release
         run: Compress-Archive -Path "release/*" -DestinationPath "wcred-${{ inputs.version }}-win-x64.zip"
         shell: pwsh
