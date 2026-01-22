@@ -6,6 +6,7 @@ A .NET library and CLI tool for managing Windows Credential Manager credentials.
 [![NuGet](https://img.shields.io/nuget/v/Stjp.SecureCredentialManagement?label=NuGet%20Library)](https://www.nuget.org/packages/Stjp.SecureCredentialManagement)
 [![NuGet](https://img.shields.io/nuget/v/wcred?label=NuGet%20CLI)](https://www.nuget.org/packages/wcred)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Stjp.SecureCredentialManagement?label=Downloads)](https://www.nuget.org/packages/Stjp.SecureCredentialManagement)
+[![NuGet Downloads](https://img.shields.io/nuget/dt/wcred?label=Downloads)](https://www.nuget.org/packages/wcred)
 
 ## What's New in v1.2
 
@@ -79,7 +80,7 @@ wcred export --filter "MyApp:*" --output backup.json
 wcred import --file backup.json
 ```
 
-📖 **[Full CLI Documentation](docs/cli.md)**
+Also see: **[Full CLI Documentation](docs/cli.md)**
 
 ---
 
@@ -116,7 +117,7 @@ CredentialManager.TryUseCredential<HttpClient>("API:Token", (secret, client) =>
 }, httpClient);
 ```
 
-📖 **[Full Library Documentation](docs/library.md)**
+Also see: **[Full Library Documentation](docs/library.md)**
 
 ---
 
@@ -126,7 +127,7 @@ CredentialManager.TryUseCredential<HttpClient>("API:Token", (secret, client) =>
 |----------|-------------|
 | [CLI Reference](docs/cli.md) | Complete `wcred` command reference |
 | [Library Guide](docs/library.md) | Full .NET library API documentation |
-| [Security Deep-Dive](docs/security.md) | Honest assessment of security guarantees |
+| [Security](docs/security.md) | Assessment of Security guarantees and limitations |
 | [CHANGELOG](CHANGELOG.md) | Version history and release notes |
 
 ---
