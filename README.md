@@ -127,7 +127,7 @@ Also see: **[Full Library Documentation](docs/library.md)**
 |----------|-------------|
 | [CLI Reference](docs/cli.md) | Complete `wcred` command reference |
 | [Library Guide](docs/library.md) | Full .NET library API documentation |
-| [Security](docs/security.md) | Assessment of Security guarantees and limitations |
+| [Security](docs/security.md) | Assessment of security guarantees and limitations |
 | [CHANGELOG](CHANGELOG.md) | Version history and release notes |
 
 ---
