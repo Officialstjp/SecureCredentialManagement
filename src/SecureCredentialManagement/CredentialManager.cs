@@ -58,7 +58,11 @@ public static class CredentialManager
             {
                 var credential = ReadCredentialInternal(targetName, credType);
                 if (credential is not null)
+                {
+                    CredentialAudit.RaiseAccessed(targetName, credential.CredentialType, 
+                        CredentialAudit.CredentialAccessOperation.Read, secretRetrieved: true);
                     return credential;
+                }
             }
             catch (Win32Exception)
             {
@@ -120,6 +124,8 @@ public static class CredentialManager
         if (type.HasValue)
         {
             if (!NativeMethods.CredRead(targetName, type.Value, 0, out credPtr))
+                CredentialAudit.RaiseAccessed(targetName, type.Value, 
+                    CredentialAudit.CredentialAccessOperation.Read, secretRetrieved: true);
                 return false;
         }
         else
@@ -129,7 +135,11 @@ public static class CredentialManager
             foreach (var credType in ReadableTypes)
             {
                 if (NativeMethods.CredRead(targetName, credType, 0, out credPtr))
+                {
+                    CredentialAudit.RaiseAccessed(targetName, credType, 
+                        CredentialAudit.CredentialAccessOperation.Read, secretRetrieved: true);
                     break;
+                }
             }
             if (credPtr == IntPtr.Zero)
                 return false;
@@ -190,7 +200,11 @@ public static class CredentialManager
             foreach (var credType in ReadableTypes)
             {
                 if (NativeMethods.CredRead(targetName, credType, 0, out credPtr))
+                {
+                    CredentialAudit.RaiseAccessed(targetName, credType,
+                        CredentialAudit.CredentialAccessOperation.UseCredential, secretRetrieved: true);
                     break;
+                }
             }
             if (credPtr == IntPtr.Zero)
                 return false;
@@ -313,7 +327,10 @@ public static class CredentialManager
         foreach (var credType in ReadableTypes)
         {
             if (NativeMethods.CredDelete(targetName, credType, 0))
+            {
+                CredentialAudit.RaiseDeleted(targetName, credType);
                 return true;
+            }
             
             int error = Marshal.GetLastWin32Error();
             if (error != NativeMethods.ERROR_NOT_FOUND && error != NativeMethods.ERROR_INVALID_PARAMETER)
@@ -360,6 +377,7 @@ public static class CredentialManager
                     FileTimeToDateTimeOffset(native.LastWritten),
                     ParseAttributes(native.Attributes, native.AttributeCount)));
             }
+            CredentialAudit.RaiseEnumerated(filter, credentials.Count);
 
             return credentials;
         }
