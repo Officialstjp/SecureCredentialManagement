@@ -17,14 +17,14 @@ on:
 jobs:
   build-and-release:
     runs-on: windows-latest
-    
+
     # Optional: Require manual approval before release
     # To enable: Go to repo Settings > Environments > Create "production" > Add required reviewers
     # environment: production
-    
+
     permissions:
       contents: write  # Required to create releases
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,7 +32,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '8.0.x'
 
       - name: Restore dependencies
         run: dotnet restore

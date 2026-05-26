@@ -5,6 +5,13 @@ All notable changes to SecureCredentialManagement will be documented in this fil
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-05-26
+
+- **Target Framework**:
+  - Multi-target `net8.0` and `net10.0` for broader compatibility
+- **Cleanup**:
+  - Null-reference checks and linting
+
 ## [1.2.0] - 2026-01-22
 
 ### Added
@@ -46,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `docs\library.md` - Detailed library usage guide
   - `docs\security.md` - Deep-dive into security model and limitations
   - `docs\nuget-cli.md` - NuGet package page for CLI tool
-  - `docs\nuget-library.md` - NuGet package page for library 
+  - `docs\nuget-library.md` - NuGet package page for library
 
 ### Changed
 

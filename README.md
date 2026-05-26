@@ -2,7 +2,7 @@
 
 A .NET library and CLI tool for managing Windows Credential Manager credentials. Provides encrypted storage, reduced memory exposure for secrets, and enterprise features like rotation and audit.
 
-[![.NET 10](https://img.shields.io/badge/.NET-10.0-blue)](https://dotnet.microsoft.com/)
+[![.NET 8+](https://img.shields.io/badge/.NET-8.0%2B-blue)](https://dotnet.microsoft.com/)
 [![NuGet](https://img.shields.io/nuget/v/Stjp.SecureCredentialManagement?label=NuGet%20Library)](https://www.nuget.org/packages/Stjp.SecureCredentialManagement)
 [![NuGet](https://img.shields.io/nuget/v/wcred?label=NuGet%20CLI)](https://www.nuget.org/packages/wcred)
 [![NuGet Downloads](https://img.shields.io/nuget/dt/Stjp.SecureCredentialManagement?label=Downloads)](https://www.nuget.org/packages/Stjp.SecureCredentialManagement)
@@ -54,7 +54,7 @@ dotnet test
 ## Requirements
 
 - Windows 10/11 or Windows Server 2016+
-- .NET 10.0 or later
+- .NET 8.0 or later
 
 ---
 
@@ -92,7 +92,7 @@ using SecureCredentialManagement;
 // Write a credential
 CredentialManager.WriteCredential(
     targetName: "MyApp:Production",
-    userName: "admin@example.com", 
+    userName: "admin@example.com",
     secret: "MySecurePassword123",
     persistence: CredentialPersistence.LocalMachine);
 
@@ -112,7 +112,7 @@ CredentialManager.CreateCredential("MyApp:Database")
 CredentialManager.TryUseCredential<HttpClient>("API:Token", (secret, client) =>
 {
     // You still create a string here - that's unavoidable with most .NET APIs
-    client.DefaultRequestHeaders.Authorization = 
+    client.DefaultRequestHeaders.Authorization =
         new AuthenticationHeaderValue("Bearer", new string(secret));
 }, httpClient);
 ```

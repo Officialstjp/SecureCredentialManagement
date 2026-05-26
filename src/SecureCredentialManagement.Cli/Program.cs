@@ -1,4 +1,4 @@
-﻿/* SPDX - License - Identifier: Apache - 2.0 
+﻿/* SPDX - License - Identifier: Apache - 2.0
  * Copyright(c) 2025 Stefan Ploch */
 
 using System.CommandLine;
@@ -17,16 +17,16 @@ var auditLogPath = Environment.GetEnvironmentVariable("WCRED_AUDIT_LOG");
 if (!string.IsNullOrEmpty(auditLogPath))
 {
     CredentialAudit.IsEnabled = true;
-    
+
     CredentialAudit.OnCredentialAccessed += (_, e) =>
         AppendAuditLog(auditLogPath, $"ACCESSED: {e.TargetName} | Op: {e.Operation} | Secret: {e.SecretWasRetrieved} | User: {e.UserName} | Machine: {e.MachineName}");
-    
+
     CredentialAudit.OnCredentialModified += (_, e) =>
         AppendAuditLog(auditLogPath, $"MODIFIED: {e.TargetName} | Op: {e.Operation} | New: {e.IsNewCredential} | User: {e.UserName}");
-    
+
     CredentialAudit.OnCredentialDeleted += (_, e) =>
         AppendAuditLog(auditLogPath, $"DELETED: {e.TargetName} | User: {e.UserName}");
-    
+
     CredentialAudit.OnCredentialsEnumerated += (_, e) =>
         AppendAuditLog(auditLogPath, $"ENUMERATED: Filter: {e.Filter ?? "(all)"} | Count: {e.CredentialCount} | User: {e.UserName}");
 }
@@ -48,10 +48,10 @@ static void AppendAuditLog(string path, string message)
 
 var listCommand = new Command("list", "List stored credentials matching an optional filter. Shows target, user, type, and timestamps.");
 
-var listFilterArg = new Argument<string?>("filter") 
-{ 
-    Arity = ArgumentArity.ZeroOrOne, 
-    Description = "Wildcard filter pattern (e.g., 'git:*', 'MyApp:*'). Omit to list all credentials." 
+var listFilterArg = new Argument<string?>("filter")
+{
+    Arity = ArgumentArity.ZeroOrOne,
+    Description = "Wildcard filter pattern (e.g., 'git:*', 'MyApp:*'). Omit to list all credentials."
 };
 
 var wideOpt = new Option<bool>("--wide", "-w")
@@ -76,8 +76,8 @@ listCommand.SetAction(parseResult =>
     var creds = CredentialManager.EnumerateCredentials(filter);
     if (creds.Count == 0)
     {
-        Console.WriteLine(filter is null 
-            ? "No credentials found." 
+        Console.WriteLine(filter is null
+            ? "No credentials found."
             : $"No credentials matching '{filter}'.");
         return 0;
     }
@@ -101,13 +101,13 @@ listCommand.SetAction(parseResult =>
         // Table format: configurable column widths
         var userWidth = Math.Max(15, targetWidth / 2);
         var totalWidth = targetWidth + userWidth + 12;
-        
+
         Console.WriteLine($"{"Target".PadRight(targetWidth)} {"User".PadRight(userWidth)} Type");
         Console.WriteLine(new string('─', totalWidth));
         foreach (var c in creds)
             Console.WriteLine($"{Truncate(c.TargetName, targetWidth).PadRight(targetWidth)} {Truncate(c.UserName, userWidth).PadRight(userWidth)} {c.CredentialType}");
     }
-    
+
     Console.WriteLine($"\n{creds.Count} credential(s) found.");
     return 0;
 });
@@ -121,14 +121,14 @@ listCommand.SetAction(parseResult =>
 
 var getCommand = new Command("get", "Retrieve and display a stored credential with all metadata");
 
-var targetArg = new Argument<string>("target") 
-{ 
-    Description = "Credential target name (case-sensitive)" 
+var targetArg = new Argument<string>("target")
+{
+    Description = "Credential target name (case-sensitive)"
 };
 
-var showPasswordOpt = new Option<bool>("--show-password", "-s") 
-{ 
-    Description = "Display the password in plain text (use with caution)" 
+var showPasswordOpt = new Option<bool>("--show-password", "-s")
+{
+    Description = "Display the password in plain text (use with caution)"
 };
 
 getCommand.Add(targetArg);
@@ -137,8 +137,8 @@ getCommand.SetAction(parseResult =>
 {
     var target = parseResult.GetValue(targetArg);
     var showPassword = parseResult.GetValue(showPasswordOpt);
-    
-    var cred = CredentialManager.ReadCredential(target);
+
+    var cred = CredentialManager.ReadCredential(target ?? string.Empty);
     if (cred is null)
     {
         Console.Error.WriteLine($"Credential '{target}' not found.");
@@ -163,7 +163,7 @@ getCommand.SetAction(parseResult =>
 
     if (cred.IsExpired())
         Console.WriteLine($"[WARNING]: This credential has expired!");
-    
+
     return 0;
 });
 
@@ -176,14 +176,14 @@ getCommand.SetAction(parseResult =>
 
 var setCommand = new Command("set", "Store or update a credential in Windows Credential Manager with optional metadata");
 
-var setTargetArg = new Argument<string>("target") 
-{ 
-    Description = "Unique identifier for the credential (e.g., 'MyApp:Production', 'API:GitHub')" 
+var setTargetArg = new Argument<string>("target")
+{
+    Description = "Unique identifier for the credential (e.g., 'MyApp:Production', 'API:GitHub')"
 };
 
-var userArg = new Argument<string>("user") 
-{ 
-    Description = "Username or identifier (e.g., 'user@example.com', 'api-key', 'service-account')" 
+var userArg = new Argument<string>("user")
+{
+    Description = "Username or identifier (e.g., 'user@example.com', 'api-key', 'service-account')"
 };
 
 var passwordOpt = new Option<string?>("--password", "-pw")
@@ -270,7 +270,7 @@ setCommand.SetAction(parseResult =>
             .WithSecret(resolvedPassword)
             .WithPersistence(persist)
             .WithType(type);
-    
+
         if (!string.IsNullOrWhiteSpace(comment))
             builder.WithComment(comment);
 
@@ -294,14 +294,14 @@ setCommand.SetAction(parseResult =>
 
 var deleteCommand = new Command("delete", "Permanently remove a credential from Windows Credential Manager");
 
-var delTargetArg = new Argument<string>("target") 
-{ 
-    Description = "Target name of the credential to delete (case-sensitive, use 'list' to find exact names)" 
+var delTargetArg = new Argument<string>("target")
+{
+    Description = "Target name of the credential to delete (case-sensitive, use 'list' to find exact names)"
 };
 
-var forceOpt = new Option<bool>("--force", "-f") 
-{ 
-    Description = "Skip confirmation prompt (use in scripts)" 
+var forceOpt = new Option<bool>("--force", "-f")
+{
+    Description = "Skip confirmation prompt (use in scripts)"
 };
 
 deleteCommand.Add(delTargetArg);
@@ -316,7 +316,7 @@ deleteCommand.SetAction(parseResult =>
         Console.Error.WriteLine("Target name cannot be empty.");
         return 1;
     }
-    
+
     if (!force)
     {
         Console.Write($"Delete credential '{target}'? [y/N]: ");
@@ -332,7 +332,7 @@ deleteCommand.SetAction(parseResult =>
         Console.WriteLine($"Credential '{target}' deleted.");
         return 0;
     }
-    
+
     Console.Error.WriteLine($"Credential '{target}' not found.");
     return 1;
 });
@@ -618,7 +618,7 @@ static string? ResolvePassword(
     if (!string.IsNullOrEmpty(passwordEnvVar))
     {
         // Detect common mistake: user passed $Env:VAR or %VAR% instead of just VAR
-        if (passwordEnvVar.Contains(' ') || passwordEnvVar.Contains('=') || 
+        if (passwordEnvVar.Contains(' ') || passwordEnvVar.Contains('=') ||
             passwordEnvVar.Length > 100 || passwordEnvVar.Any(c => !char.IsLetterOrDigit(c) && c != '_'))
         {
             Console.Error.WriteLine($"Warning: '{passwordEnvVar}' doesn't look like an environment variable name.");
