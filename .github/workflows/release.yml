@@ -44,7 +44,7 @@ jobs:
         run: dotnet test --configuration Release --no-build --verbosity normal
 
       - name: Publish CLI
-        run: dotnet publish src/SecureCredentialManagement.Cli --configuration Release --no-build -o release/
+        run: dotnet publish src/SecureCredentialManagement.Cli --configuration Release --no-build -o release/ --framework net8.0 /p:Version=${{ inputs.version }}
 
       - name: Pack NuGet packages
         run: |
